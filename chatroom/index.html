@@ -1,0 +1,199 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="aplus-terminal" content="1">
+    <meta name="apple-mobile-web-app-title" content="">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+    <meta name="format-detection" content="telephone=no, address=no">
+    <title>聊天室</title>
+    <link href="source/chatroom.css" rel="stylesheet">
+</head>
+
+<body>
+    <div id="setting">
+        <input type="text" placeholder="您的姓名" id="username"><br>
+        选择你的头像：
+        <ul id="headList">
+
+        </ul>
+        <input type="button" value="确定" id="settingBtn">
+    </div>
+    <div class="qicq" style="display:none">
+        <div class="user-list">
+            <ul>
+                <li></li>
+            </ul>
+        </div>
+        <div class="mobile-page" id="mobile-page">
+            <div class="dialogs" id="dialog">
+            </div>
+            <div class="toolbar">
+                <span id="faceIcon"></span>
+                <div class="face-box">
+                    <ul></ul>
+                </div>
+            </div>
+            <div contentEditable="true" id="sendMess">
+            </div>
+        </div>
+
+</body>
+<script src="https://cdn.bootcss.com/jquery/3.3.1/jquery.min.js"></script>
+<script src="http://pv.sohu.com/cityjson?ie=utf-8"></script>
+<script>
+    var ws;
+    var userInfo = {
+        id: "",
+        name: "",
+        imgId: "",
+        ip: "",
+        city: ""
+    };
+    $(function () {
+        userInfo.ip = returnCitySN["cip"];
+        userInfo.city = returnCitySN["cname"];
+
+        for (var i = 1; i <= 15; i++) {
+            $("#headList").append("<li><img data-id='" + i + "' src='img/" + i + ".jpg'></li>");
+        }
+        $("#headList").find("li").eq(0).addClass("active");
+        $("#headList").find("li").on("click", function () {
+            $(this).addClass("active").siblings("li").removeClass("active");
+            userInfo.imgId = $(this).find("img").attr("data-id");
+        });
+
+        //加载表情包
+        for (var i = 1; i < 100; i++) {
+            var li = $("<li><img src='img/face/face (" + i + ").gif'></li>");
+            $(".face-box").find("ul").append(li);
+            li.on("click", function () {
+                ws.send(JSON.stringify({ id: userInfo.id, name: userInfo.name, message: $(this).html(), type: 11, ip: userInfo.ip, city: userInfo.city, imgid: userInfo.imgId }));
+            })
+        }
+        $(document).on("click", function (e) {
+            var elm = $(e.target);
+            if (elm.attr("id") == "faceIcon" || elm.parent().attr("id") == "faceIcon") {
+                $(".face-box").toggle();
+            } else {
+                $(".face-box").hide();
+            }
+        })
+        //生成随机的字符串作为唯一标识
+        userInfo.id = randomString(16);
+        var mess = $("#dialog");
+        var textArea = $("#sendMess");
+        $("#settingBtn").on("click", function () {
+            if ($("#username").val()) {
+                userInfo.name = $("#username").val();
+                $(".qicq").show().prev().hide();
+                $(".user-list").find("ul").html("<li><img src='img/" + userInfo.imgId + ".jpg'><span class='title'>" + userInfo.name + "</span><span class='ip'>" + userInfo.ip + "</span><span class='city'>" + userInfo.city + "</span></li>");
+                if (window.WebSocket) {
+                    ws = new WebSocket('ws://172.22.161.38:8001');
+
+                    ws.onopen = function (e) {
+                        console.log("连接服务器成功");
+                        ws.send(JSON.stringify({ id: userInfo.id, name: userInfo.name, message: userInfo.name + "进入了群聊", type: 1, ip: userInfo.ip, city: userInfo.city, imgid: userInfo.imgId }));
+                    }
+                    ws.onclose = function (e) {
+                        console.log("服务器关闭");
+                    }
+                    ws.onerror = function () {
+                        mess.append('<p class="system-info"><span><img src="img/cross-circle.png" style="top: 3px;position: relative;margin-right: 2px;">连接异常，请检查网络状况</span></p>');
+                        console.log("连接出错");
+                    }
+
+                    ws.onmessage = function (e) {
+                        if (e.data) {
+                            var json = eval("(" + e.data + ")");
+                            if (json.type === 1) {
+                                mess.append('<p class="system-info"><span>' + json.message + '</span></p>');
+                            } else if (json.type === 2) {
+                                if (json.id !== userInfo.id) {
+                                    var temp = $('<div class="admin-group">' +
+                                        '<img class= "admin-img" src = "img/' + json.imgid + '.jpg" />' +
+                                        '<div class="admin-msg">' +
+                                        '<span class="admin-name">' + json.name + "</span>" +
+                                        '<i class="triangle-admin"></i>' +
+                                        '<span class="admin-reply"></span></div></div>');
+                                    if (json.message.indexOf("<script") > -1)
+                                        temp.find(".admin-reply").text(json.message);
+                                    else
+                                        temp.find(".admin-reply").html(json.message);
+                                    mess.append(temp);
+                                } else {
+                                    var temp = $('<div class="user-group">' +
+                                        '<div class="user-msg">' +
+                                        '<span class="user-name">' + userInfo.name + "</span>" +
+                                        '<span class="user-reply"></span>' +
+                                        '<i class="triangle-user"></i>' +
+                                        '</div>' +
+                                        '<img class="user-img" src="img/' + json.imgid + '.jpg" /></div>');
+                                    if (json.message.indexOf("<script") > -1)
+                                        temp.find(".user-reply").text(json.message);
+                                    else
+                                        temp.find(".user-reply").html(json.message);
+                                    mess.append(temp);
+                                }
+                            } else if (json.type === 10) {
+                                var userHtml = [];
+                                var _html = $(".user-list").find("ul").find("li").eq(0);
+                                $(".user-list").find("ul").html("").append(_html);
+                                $.each(json.userList, function (index, item) {
+                                    if (item.id != userInfo.id)
+                                        userHtml.push("<li><img src='img/" + item.imgid + ".jpg'><span class='title'>" + item.name + "</span><span class='ip'>" + item.ip + "</span><span class='city'>" + item.city + "</span></li>");
+                                });
+                                $(".user-list").find("ul").append(userHtml.join(""));
+                            } else if (json.type == 11) {
+                                if (json.id !== userInfo.id) {
+                                    var temp = $('<div class="admin-group">' +
+                                        '<img class= "admin-img" src = "img/' + json.imgid + '.jpg" />' +
+                                        '<div class="admin-msg">' +
+                                        '<span class="admin-name">' + json.name + "</span>" +
+                                        json.message +
+                                        '</div></div>');
+                                    mess.append(temp);
+                                } else {
+                                    var temp = $('<div class="user-group">' +
+                                        '<div class="user-msg">' +
+                                        '<span class="user-name">' + userInfo.name + "</span>" +
+                                        json.message +
+                                        '</div>' +
+                                        '<img class="user-img" src="img/' + json.imgid + '.jpg" /></div>');
+                                    mess.append(temp);
+                                }
+                            }
+                            var ele = document.getElementById('dialog');
+                            ele.scrollTop = ele.scrollHeight;
+                        }
+                    }
+                }
+            }
+        })
+
+        $(document).keyup(function (event) {
+            if (event.keyCode == 13 && textArea.html() != "") {
+                ws.send(JSON.stringify({ id: userInfo.id, name: userInfo.name, message: textArea.html().replace("<div><br></div>", ""), type: 2, imgid: userInfo.imgId }));
+                textArea.html("");
+                return false;
+            }
+        });
+    });
+
+    //生成指定长度的随机字符串
+    function randomString(len) {
+        len = len || 32;
+        var $chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890';
+        var maxPos = $chars.length;
+        var pwd = '';
+        for (i = 0; i < len; i++) {
+            pwd += $chars.charAt(Math.floor(Math.random() * maxPos));
+        }
+        return pwd;
+    }
+</script>
+
+</html>
